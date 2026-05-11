@@ -1,416 +1,216 @@
-# Prompt Pembuka Sesi Codex CLI — Metadata Intake Bot
+# Codex Session Start Prompt - Metadata Intake Bot
 
-Buat project baru backend-only bernama `metadata-intake-bot` untuk Telegram Product Metadata Bot.
+Use this document as the compact project briefing for future Codex sessions.
 
-## Konteks Produk
+## Product Context
 
-Project ini adalah Telegram Bot backend-only untuk generate metadata produk dari deskripsi seller/supplier.
+This repo is a backend-only Telegram bot for generating structured product metadata from messy seller/supplier text.
 
-MVP hanya fokus pada **teks deskripsi seller**, bukan scan foto, bukan OCR gambar, bukan edit foto, bukan sync marketplace, bukan tracking delivery, dan bukan frontend dashboard.
+MVP is text-first:
 
-Bot digunakan untuk workflow reseller/dropship:
+- No frontend dashboard.
+- No OCR or image editing.
+- Supplier photo attachment is supported for audit context.
+- No marketplace API sync.
+- No WhatsApp automation.
+- No delivery tracking.
 
-1. User kirim deskripsi seller yang tidak rapi.
-2. Bot generate metadata produk.
-3. Bot simpan raw seller text dan hasil metadata ke database.
-4. Bot tampilkan field per bagian di chat Telegram dalam format copyable.
-5. User bisa cari ulang produk berdasarkan nama supplier atau nama toko hasil normalisasi, bukan berdasarkan SKU.
+User workflow:
 
-## Target Infra
+1. User sends messy seller text.
+2. Bot generates metadata.
+3. Bot stores raw seller text and generated metadata in Supabase.
+4. Bot returns copyable fields in Telegram.
+5. User can search by supplier terms, normalized product name, material, keywords, or title.
+
+## Current Runtime Shape
 
 - Node.js + TypeScript.
-- Vercel Functions untuk production webhook.
-- Local development dengan polling adapter.
-- Supabase sebagai database persisten.
-- Gemini API untuk structured metadata generation.
-- Telegram output berupa label + inline code/monospace value per field agar user bisa copy dari teks chat.
-- Tidak menggunakan inline keyboard copy button untuk MVP.
-- Tidak menggunakan SQLite di Vercel.
-- Tidak membuat frontend.
+- Vercel Functions for production webhook.
+- Local development through Telegram polling.
+- Supabase for persistence.
+- Gemini API through direct `fetch`.
+- Telegram output uses HTML parse mode with `<code>...</code>`.
+- Telegram transport helper is `src/bot/http.ts`; do not rename it casually.
 
-## Scope MVP yang Wajib Dikunci
+## Commands
 
-### In Scope
-
-- `/start`
-- `/new`
-- `/search <kata>`
-- `/detail <short_code>`
-- `/shopee <kata>`
-- `/tiktok <kata>`
-- `/review`
-- `/ready`
-- `/archive <short_code>`
-- Gemini structured output.
-- Supabase insert/search/detail.
-- SKU generator.
-- Compliance guard.
-- Telegram formatter untuk output copyable per field.
-- Local polling development.
-- Vercel webhook production.
-
-### Out of Scope
-
-Jangan buat:
-
-- Frontend.
-- Dashboard React/Next.
-- Scan foto/OCR gambar.
-- Upload/edit/analyze image.
-- Marketplace sync.
-- Shopee/Tokopedia/TikTok API integration.
-- Tracking delivery.
-- WhatsApp automation.
-- Payment supplier tracking.
-- Cron summary.
-
-## Format Title Wajib
-
-Gunakan format:
+Implemented commands:
 
 ```text
-[NAMA TOKO UPPERCASE] | [NAMA SERIES AI] [NAMA PRODUK SUPPLIER YANG DINORMALISASI] - [KEYWORD PLATFORM MARKETPLACE]
+/start
+/new
+/search <kata>
+/detail <short_code>
+/shopee <kata_or_short_code>
+/tiktok <kata_or_short_code>
+/review
+/ready
+/archive <short_code>
 ```
 
-Env default:
+## Important Scripts
 
-```env
-STORE_NAME=LANDEP SMITH
-STORE_CODE=LDS
+```json
+{
+  "dev": "vercel dev",
+  "dev:polling": "tsx --env-file=.env scripts/dev-polling.ts",
+  "build": "tsc --noEmit",
+  "typecheck": "tsc --noEmit",
+  "lint": "eslint .",
+  "set:webhook": "tsx --env-file=.env scripts/set-webhook.ts",
+  "delete:webhook": "tsx --env-file=.env scripts/delete-webhook.ts",
+  "test:gemini": "tsx --env-file=.env scripts/test-gemini.ts",
+  "test:metadata": "tsx --env-file=.env scripts/test-metadata-sanitizer.ts"
+}
 ```
 
-Contoh output:
+## Metadata Rules
+
+Raw supplier text must stay unchanged in storage.
+
+Generated public-facing metadata must be sanitized:
+
+- `normalized_store_name`
+- `title_internal`
+- `title_shopee`
+- `title_tiktok`
+- keywords
+- descriptions
+- image text metadata
+
+Use neutral category aliases:
 
 ```text
-LANDEP SMITH | WIRA SERIES Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm - Alat Outdoor Harian
+Perkakas Handcraft
+Alat Outdoor
+Alat Kebun
+Alat Dapur
 ```
 
-## Search UX Wajib
-
-Search utama bukan SKU.
-
-Search harus berdasarkan:
-
-- raw seller text
-- supplier product name
-- normalized store name
-- generated title
-- material
-- keyword
-- series
-- supplier
-
-SKU tetap dibuat untuk field internal/seller, tetapi user tidak diwajibkan mengingat SKU.
-
-## Telegram Output Format Wajib
-
-Output metadata harus memakai label + inline code.
-
-Contoh:
+Do not copy sensitive supplier wording such as:
 
 ```text
-Nama Toko:
-`LANDEP SMITH | WIRA SERIES Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm - Alat Outdoor Harian`
-
-SKU:
-`LDS-WRA-BP-JTI-PB25-TB4-001`
-
-Modal Supplier:
-`120000`
+sembelih
+tebas
+senjata tajam
+self defense
+combat
+tactical
+anti begal
+badik
+belati
+golok
+parang
+pisau
 ```
 
-Jangan mengandalkan tombol copy inline keyboard untuk MVP.
+## Dimension Rules
 
-Field panjang wajib dipecah:
+Default units:
 
 ```text
-Deskripsi Shopee 1:
-`...`
-
-Deskripsi Shopee 2:
-`...`
+PB -> Panjang Bilah -> cm
+TB -> Tinggi Bilah  -> cm
+LB -> Lebar Bilah   -> mm
 ```
 
-Gunakan HTML parse mode dengan `<code>...</code>` atau MarkdownV2 dengan escaping benar. Pastikan karakter khusus tidak merusak formatting.
+If seller includes an explicit unit, preserve it.
 
-## Gemini Structured Output
+`image_metadata.spec_copy_fields` must include both:
 
-Implementasikan `src/metadata/generateMetadata.ts` untuk memanggil Gemini dengan structured output JSON.
+- value-only copy, for example `16 cm`
+- label+value copy, for example `Tinggi Bilah 16 cm`
 
-Output schema harus berisi minimal:
+## Compliance Rules
 
-- raw_seller_text
-- supplier_product_name
-- normalized_store_name
-- generated_series
-- category_context
-- product_type
-- supplier_price
-- supplier_stock
-- specs
-- missing_fields
-- sensitive_terms
-- compliance_status
-- compliance_reason
-- title_internal
-- title_shopee
-- title_tiktok
-- sku_basis
-- keywords_shopee
-- keywords_tiktok
-- image_metadata
-- shopee_description_parts
-- tiktok_description_parts
-- data_status
-- confidence_summary
-
-AI wajib membedakan field:
-
-- explicit
-- inferred
-- unknown
-- risk
-
-AI tidak boleh mengisi field kosong sebagai fakta.
-
-## Compliance Guard
-
-Buat `src/metadata/complianceGuard.ts`.
-
-Rules:
-
-- Menandai kata agresif/sensitif seperti senjata, self defense, combat, tactical, sembelih, tebas, badik, belati, golok, survival weapon.
-- Tidak menyamarkan produk dilarang.
-- Boleh menormalisasi bahasa supplier menjadi netral jika fungsi produk jelas.
-- Memberi status: `SAFE_TO_DRAFT`, `NEED_REVIEW`, `INTERNAL_ONLY`, `BLOCKED`.
-- Untuk produk tajam/ambiguous default ke `NEED_REVIEW` atau `INTERNAL_ONLY`, bukan `SAFE_TO_DRAFT` otomatis.
-- Tidak membuat copy promosi yang mengarah ke senjata, self-defense, tactical, combat, atau klaim berbahaya.
-
-## SKU Generator
-
-Generate SKU internal stabil:
+Compliance statuses:
 
 ```text
-[STORE_CODE]-[SERIES_CODE]-[CATEGORY_CODE]-[MATERIAL_CODE]-[ATTRIBUTE_CODE]-[SEQ]
+SAFE_TO_DRAFT
+NEED_REVIEW
+INTERNAL_ONLY
+BLOCKED
 ```
 
-Contoh:
+Platform pack purposes:
 
 ```text
-LDS-WRA-BP-JTI-PB25-TB4-001
+MARKETPLACE_DRAFT
+REVIEW_REQUIRED
+METADATA_ONLY
 ```
 
-Jika attribute unknown, gunakan kode aman seperti `GEN` atau skip komponen yang tidak tersedia.
+`INTERNAL_ONLY` and `BLOCKED` must still return sanitized metadata. Do not empty platform packs unless a future product decision explicitly changes this.
 
 ## Database
 
-Buat migration:
+Main tables:
 
 - `product_drafts`
 - `metadata_versions`
 - `bot_events`
 - `user_sessions`
 
-`product_drafts` minimal menyimpan:
+JSONB fields allow schema extension without migration:
 
-- id
-- short_code
-- sku_internal
-- store_name
-- store_code
-- raw_seller_text
-- supplier_name
-- supplier_product_name
-- normalized_store_name
-- generated_series
-- title_internal
-- title_shopee
-- title_tiktok
-- supplier_price
-- supplier_stock
-- specs_json
-- missing_fields_json
-- sensitive_terms_json
-- keywords_json
-- image_metadata_json
-- shopee_field_pack_json
-- tiktok_field_pack_json
-- data_status
-- compliance_status
-- review_notes
-- searchable_text
-- archived_at
-- created_at
-- updated_at
+- `specs_json`
+- `image_metadata_json`
+- `shopee_field_pack_json`
+- `tiktok_field_pack_json`
 
-## Repo Structure Target
+Before future migrations, verify the Supabase project in `.env` and Supabase CLI linked project. Do not assume Supabase MCP points to this repo's project.
 
-Buat struktur:
+## Local Development
+
+Recommended flow:
+
+```bash
+npm run delete:webhook
+npm run dev:polling
+```
+
+Do not keep webhook and polling active on the same bot token.
+
+## Vercel Webhook
+
+Only run `npm run set:webhook` after:
 
 ```text
-metadata-intake-bot/
-├─ api/
-│  ├─ telegram/
-│  │  └─ webhook.ts
-│  └─ health.ts
-├─ scripts/
-│  ├─ dev-polling.ts
-│  ├─ set-webhook.ts
-│  ├─ delete-webhook.ts
-│  └─ test-gemini.ts
-├─ src/
-│  ├─ bot/
-│  │  ├─ handleUpdate.ts
-│  │  ├─ commands/
-│  │  ├─ formatters/
-│  │  └─ telegramClient.ts
-│  ├─ metadata/
-│  │  ├─ generateMetadata.ts
-│  │  ├─ metadataSchema.ts
-│  │  ├─ normalizeSellerText.ts
-│  │  ├─ skuGenerator.ts
-│  │  ├─ complianceGuard.ts
-│  │  └─ searchText.ts
-│  ├─ db/
-│  │  ├─ supabase.ts
-│  │  ├─ productDraftsRepo.ts
-│  │  ├─ versionsRepo.ts
-│  │  └─ sessionsRepo.ts
-│  ├─ config/
-│  │  └─ env.ts
-│  └─ types/
-│     └─ metadata.ts
-├─ supabase/
-│  └─ migrations/
-│     └─ 001_initial_schema.sql
-├─ docs/
-│  ├─ PRD.md
-│  ├─ HANDOFF.md
-│  ├─ LOCAL_DEV.md
-│  └─ MVP_SCOPE.md
-├─ package.json
-├─ tsconfig.json
-├─ vercel.json
-├─ .env.example
-└─ README.md
+https://metadata-intake-bot.vercel.app/api/health
 ```
 
-## Scripts yang Harus Ada
+returns HTTP `200`.
 
-```json
-{
-  "scripts": {
-    "dev": "vercel dev",
-    "dev:polling": "tsx scripts/dev-polling.ts",
-    "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
-    "set:webhook": "tsx scripts/set-webhook.ts",
-    "delete:webhook": "tsx scripts/delete-webhook.ts",
-    "test:gemini": "tsx scripts/test-gemini.ts"
-  }
-}
-```
-
-## Environment Variables
-
-Buat `.env.example`:
-
-```env
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_WEBHOOK_SECRET=
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-STORE_NAME=LANDEP SMITH
-STORE_CODE=LDS
-DEFAULT_LANGUAGE=id
-NODE_ENV=development
-```
-
-`src/config/env.ts` harus validate env required.
-
-## Local Dev Requirements
-
-Implementasikan `scripts/dev-polling.ts` agar local development tidak perlu webhook/tunnel.
-
-Implementasikan:
-
-- `scripts/set-webhook.ts`
-- `scripts/delete-webhook.ts`
-
-Dokumentasikan bahwa satu bot token tidak boleh aktif webhook dan polling bersamaan. Gunakan dev bot terpisah jika memungkinkan.
-
-## Vercel Webhook Requirements
-
-`api/telegram/webhook.ts` harus:
-
-- menerima POST Telegram update
-- validasi `TELEGRAM_WEBHOOK_SECRET` jika tersedia
-- memanggil `handleUpdate()`
-- return 200
-- logging error aman tanpa membocorkan token
-
-## Documentation Required
-
-Buat docs:
-
-- `docs/PRD.md`
-- `docs/HANDOFF.md`
-- `docs/LOCAL_DEV.md`
-- `docs/MVP_SCOPE.md`
-
-Isi docs harus menjelaskan:
-
-- scope MVP
-- local dev polling
-- Vercel webhook
-- Supabase setup
-- Gemini setup
-- command bot
-- output format
-- batasan out-of-scope
-
-## Example Test Input
-
-Gunakan input ini untuk test:
+## Test Input
 
 ```text
-Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 4 ml stok 12 pcs 120.000
+Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 16 stok 12 pcs 120.000
 ```
 
 Expected:
 
-- Modal supplier: 120000
-- Stok supplier: 12
-- Material: baja per
-- Handle/material: kayu jati
-- PB: 25-26 cm
-- LB: 35 mm
-- TB: 4 mm
-- Missing fields: berat, dimensi paket, isi paket, supplier
-- Compliance: NEED_REVIEW atau INTERNAL_ONLY
-- Search `/search kayu jati` menemukan produk
-- `/shopee kayu jati` menampilkan field pack copyable
+- Price: `120000`
+- Stock: `12`
+- Material: `baja per`
+- Handle material: `kayu jati`
+- PB: `25-26 cm`
+- LB: `35 mm`
+- TB: `16 cm`
+- Title uses neutral alias and does not include sensitive supplier terms.
+- Compliance is `INTERNAL_ONLY` or stricter.
+- Platform pack purpose is `METADATA_ONLY`.
+- `Copy Spek Foto` includes `16 cm` and `Tinggi Bilah 16 cm`.
 
-## Success Criteria
+## Required Validation
 
-Setelah selesai, laporkan:
+Before reporting implementation complete, run:
 
-1. Struktur file yang dibuat.
-2. Cara menjalankan local dev.
-3. Cara set webhook Vercel.
-4. Env yang harus diisi.
-5. SQL migration yang harus dijalankan.
-6. Contoh input seller dan contoh output Telegram.
-7. Batasan MVP yang tetap dikunci.
-8. Commands yang sudah tersedia.
-9. Hasil typecheck/lint/build.
-
-Jangan membuat frontend.
-Jangan menambahkan scan foto/OCR gambar.
-Jangan menambahkan marketplace sync.
-Jangan menambahkan tracking delivery.
-Jangan menambahkan WhatsApp automation.
+```bash
+npm run typecheck
+npm run lint
+npm run build
+npm run test:metadata
 ```
+
+Run `npm run test:gemini` when Gemini API verification is required.

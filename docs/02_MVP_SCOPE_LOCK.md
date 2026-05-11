@@ -1,98 +1,72 @@
 # MVP Scope Lock
 
-Dokumen ini wajib dibaca sebelum coding. Tujuannya menjaga Codex tetap fokus dan tidak melebar.
+Read this before coding. Keep the project backend-only. Support supplier photo attachments for audit context, but do not add OCR or image editing.
 
-## MVP Name
-
-**Metadata Intake Bot — Text-Only MVP**
-
-## Yang Harus Dibuat Sekarang
+## MVP Flow
 
 ```text
-Input teks deskripsi seller
-→ Generate metadata produk
-→ Simpan ke database
-→ Tampilkan field copyable di Telegram
-→ Bisa dicari ulang
+Seller text input
+-> Generate metadata
+-> Sanitize generated public metadata
+-> Store raw + generated data in Supabase
+-> Return copyable Telegram fields
+-> Make data searchable later
 ```
 
-## In Scope Detail
+## In Scope
 
-1. Telegram Bot backend-only.
-2. `/new` untuk input metadata baru.
-3. Pemrosesan teks seller dengan Gemini.
-4. Structured JSON output dari Gemini.
-5. Supabase database.
-6. Vercel webhook production.
-7. Local polling adapter untuk development.
-8. Generate:
-   - normalized store name
-   - generated series
-   - title internal
-   - title Shopee
-   - title TikTok
-   - SKU internal
-   - specs
-   - missing fields
-   - keywords
-   - image metadata text
-   - Shopee description parts
-   - TikTok description parts
-9. Search berdasarkan nama, bukan SKU.
-10. Copyable chat output dengan inline code/monospace.
+1. Telegram backend-only bot.
+2. `/new` product metadata intake.
+3. Gemini structured output.
+4. Heuristic extraction fallback.
+5. Compliance guard.
+6. Catalog sanitizer with neutral aliases.
+7. Supabase persistence.
+8. Local polling adapter.
+9. Vercel webhook production path.
+10. Search and detail commands.
+11. Shopee/TikTok metadata packs.
+12. `image_metadata.spec_copy_fields` for photo-editing copy.
+13. Supplier photo attachment tied to `/new` drafts for audit context.
 
-## Explicitly Out of Scope
+## Out of Scope
 
-Jangan membuat fitur berikut di MVP:
+Do not build:
 
-- Frontend React/Next dashboard.
-- Upload/edit/analyze foto.
-- OCR image/PDF.
-- Scraping Seller Centre.
-- Shopee/Tokopedia/TikTok API sync.
-- Tracking delivery.
-- Auto posting/upload listing.
-- WhatsApp integration.
-- Payment supplier tracking.
-- Cron summary harian.
-- Multi-user team roles.
-- Admin web settings.
+- frontend dashboard
+- OCR
+- image editing
+- marketplace sync
+- auto posting/listing
+- scraping Seller Centre
+- WhatsApp integration
+- delivery tracking
+- payment tracking
+- cron summaries
+- team/admin roles
 
 ## Non-Negotiable UX Rules
 
-- Jangan jadikan SKU sebagai cara utama user mencari produk.
-- Jangan kirim satu pack metadata besar tanpa pemisahan field.
-- Jangan pakai copy button inline keyboard sebagai mekanisme utama copy di MVP.
-- Gunakan format:
+- Search must not depend on SKU.
+- Do not send one giant metadata blob.
+- Use copyable label/value output.
+- Split long fields.
+- Show compliance status and warning clearly.
+- Show `Copy Spek Foto` fields when specs exist.
 
-```text
-Label:
-`value`
-```
+## Non-Negotiable AI and Sanitizer Rules
 
-- Field panjang harus dipecah:
-
-```text
-Deskripsi Shopee 1:
-`...`
-
-Deskripsi Shopee 2:
-`...`
-```
-
-## Non-Negotiable AI Rules
-
-- AI tidak boleh mengisi field yang tidak ada sebagai fakta.
-- AI wajib menandai data missing.
-- AI wajib membedakan explicit, inferred, unknown, risk.
-- AI boleh menormalisasi bahasa supplier menjadi bahasa katalog yang profesional dan netral.
-- AI tidak boleh membuat output yang mempromosikan produk sebagai senjata, self-defense, tactical, combat, atau klaim berbahaya.
+- AI must not invent facts.
+- Explicit heuristic specs should win over conflicting AI specs.
+- Raw seller text stays unchanged in storage.
+- Public generated metadata must not copy sensitive supplier terms directly.
+- Use neutral category aliases for title/name output.
+- `INTERNAL_ONLY` and `BLOCKED` still return metadata with `purpose: METADATA_ONLY`.
 
 ## Non-Negotiable Infra Rules
 
-- Tidak pakai SQLite di Vercel.
-- Persistensi data pakai Supabase.
-- Local dev boleh pakai polling.
-- Production Vercel pakai webhook.
-- Jangan commit `.env.local` atau token.
-- Service role key hanya untuk backend.
+- Use Supabase, not SQLite, for persistence.
+- Use `.env` for local scripts.
+- Never commit `.env` or tokens.
+- Service role key is backend-only.
+- Do not set webhook while polling is active on the same token.

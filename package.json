@@ -1,5 +1,34 @@
 {
+  "name": "metadata-intake-bot",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "dev:polling": "tsx --env-file=.env scripts/dev-polling.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "set:webhook": "tsx --env-file=.env scripts/set-webhook.ts",
+    "delete:webhook": "tsx --env-file=.env scripts/delete-webhook.ts",
+    "test:gemini": "tsx --env-file=.env scripts/test-gemini.ts",
+    "test:metadata": "tsx --env-file=.env scripts/test-metadata-sanitizer.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "zod": "^3.24.2"
+  },
   "devDependencies": {
-    "supabase": "^2.98.2"
+    "@eslint/js": "^9.20.0",
+    "@types/node": "^22.13.4",
+    "@typescript-eslint/eslint-plugin": "^8.24.0",
+    "@typescript-eslint/parser": "^8.24.0",
+    "eslint": "^9.20.0",
+    "supabase": "^2.98.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vercel": "^53.3.2"
   }
 }

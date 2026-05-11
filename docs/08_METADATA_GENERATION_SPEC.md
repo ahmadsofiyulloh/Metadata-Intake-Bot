@@ -2,17 +2,17 @@
 
 ## Input
 
-Input MVP hanya teks seller.
+MVP input is seller text first. Supplier photos can be attached to the same draft for audit context, but OCR is not used.
 
-Contoh:
+Example:
 
 ```text
-Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 4 ml stok 12 pcs 120.000
+Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 16 stok 12 pcs 120.000
 ```
 
-## Output Utama
+## Output
 
-Bot harus menghasilkan:
+The bot generates:
 
 - `supplier_product_name`
 - `normalized_store_name`
@@ -29,178 +29,112 @@ Bot harus menghasilkan:
 - `keywords_shopee`
 - `keywords_tiktok`
 - `image_metadata`
+- `image_metadata.spec_copy_fields`
 - `shopee_description_parts`
 - `tiktok_description_parts`
 - `data_status`
 - `compliance_status`
 - `compliance_reason`
 
-## Data Extraction Rules
-
-AI wajib mengklasifikasikan field:
+Telegram juga merender field turunan `Estimasi Harga Jual` dari `supplier_price` dengan rumus statis:
 
 ```text
-explicit: disebut langsung
-inferred: disimpulkan dari konteks
-unknown: tidak ada data
-risk: sensitif/berisiko
+estimasi = supplier_price + (supplier_price x 25%) + (supplier_price x 25%)
 ```
 
-Jangan mengarang field seperti berat, dimensi, isi paket, atau garansi jika tidak ada.
+Rumus ini dipakai sebagai output UI, bukan field yang disimpan ke schema metadata.
 
-## Normalized Store Name
+## Extraction Rules
 
-Nama produk toko harus:
-
-- Lebih rapi dari nama supplier.
-- Menghapus kata kasar/hiperbolis yang tidak perlu.
-- Menjaga jenis/fungsi produk secara jujur.
-- Tidak membuat klaim palsu.
-- Tidak terlalu panjang.
-
-Contoh:
-
-Raw:
+Each extracted field has a source:
 
 ```text
-Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 4 ml stok 12 pcs 120.000
+explicit -> stated directly by seller
+inferred -> inferred from context
+unknown  -> not present
+risk     -> sensitive or risky
 ```
 
-Normalized:
+Do not invent facts such as package weight, package dimensions, warranty, or bundle contents.
+
+## Store Name and Title Rules
+
+`supplier_product_name` may keep supplier wording for internal audit.
+
+`normalized_store_name`, titles, keywords, descriptions, and image text must be sanitized:
+
+- Do not copy vulgar or sensitive supplier wording into public-facing metadata.
+- Use neutral category aliases by default: `Perkakas Handcraft`, `Alat Outdoor`, `Alat Kebun`, or `Alat Dapur`.
+- Remove action/aggressive terms such as `sembelih`, `tebas`, `senjata tajam`, `self defense`, `combat`, `tactical`, and `anti begal`.
+- Avoid repeated category, material, or dimension phrases.
+
+Example normalized store name:
 
 ```text
-Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 4 mm
+Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 16 cm
 ```
 
-## Series Generator
-
-AI generate nama series singkat dan brandable.
-
-Contoh series:
-
-- WIRA SERIES
-- ARJUNA SERIES
-- RIMBA SERIES
-- DAPUR SERIES
-- KARYA SERIES
-- LOKA SERIES
-
-Series harus relevan dengan konteks produk, tetapi tidak boleh membuat klaim ekstrem.
-
-## SKU Generator
-
-Format:
+Title format:
 
 ```text
-[STORE_CODE]-[SERIES_CODE]-[CATEGORY_CODE]-[MATERIAL_CODE]-[ATTRIBUTE_CODE]-[SEQ]
-```
-
-Contoh:
-
-```text
-LDS-WRA-BP-JTI-PB25-TB4-001
-```
-
-Mapping awal:
-
-```text
-STORE_CODE  = LDS
-WIRA SERIES = WRA
-Baja Per    = BP
-Kayu Jati   = JTI
-PB 25       = PB25
-TB 4        = TB4
-```
-
-If unknown attribute, skip or use `GEN`.
-
-## Title Internal
-
-Formula:
-
-```text
-[NAMA TOKO UPPERCASE] | [SERIES] [NORMALIZED STORE NAME] - [KEYWORD PLATFORM]
+[STORE NAME UPPERCASE] | [SERIES] [NORMALIZED STORE NAME] - [NEUTRAL KEYWORD]
 ```
 
 Example:
 
 ```text
-LANDEP SMITH | WIRA SERIES Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm - Alat Outdoor Harian
+LANDEP SMITH | WIRA SERIES Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 16 cm - Perkakas Handcraft
 ```
 
-## Keywords
+## Dimension Rules
 
-Keyword harus SEO-friendly dan netral.
-
-Allowed examples:
+Default units when seller does not provide a unit:
 
 ```text
-alat outdoor
-perkakas handcraft
-gagang kayu jati
-baja pilihan
-perlengkapan kebun
-alat dapur
-alat potong masak
-finishing rapi
-packing aman
+PB -> Panjang Bilah -> cm
+TB -> Tinggi Bilah  -> cm
+LB -> Lebar Bilah   -> mm
 ```
 
-Avoid high-risk/aggressive examples:
+If seller provides an explicit `cm` or `mm`, preserve that unit.
 
-```text
-senjata tajam
-self defense
-tactical weapon
-combat
-anti begal
-mematikan
-tebas orang
-```
+## Image Metadata
 
-## Image Metadata Text
+Photo editing is done outside the app, so `image_metadata` includes copy-ready text.
 
-Karena edit foto dilakukan di luar app, output berupa teks siap copy:
+`spec_copy_fields` must include both value-only and label+value variants:
 
 ```json
 {
-  "hero_headline": "Cocok untuk Berbagai Aktivitas",
-  "hero_subheadline": "Material kokoh, tampilan elegan, dan nyaman digunakan",
-  "badges": ["Produk Dicek", "Packing Aman", "Siap Kirim", "Stok Terbatas"],
-  "spec_headline": "Ukuran & Spesifikasi",
-  "benefit_points": ["Material pilihan", "Finishing rapi", "Nyaman digunakan", "Cocok untuk kebutuhan harian"]
+  "key": "tb",
+  "label": "Tinggi Bilah",
+  "value": "16 cm",
+  "copy_value": "16 cm",
+  "copy_label_value": "Tinggi Bilah 16 cm",
+  "context": "ukuran bilah",
+  "source": "explicit",
+  "confidence": 0.75
 }
 ```
 
-## Description Parts
+`spec_copy_fields` ditampilkan sebagai blok terpisah per field di Telegram, supaya `Panjang Bilah`, `Lebar Bilah`, dan `Tinggi Bilah` bisa dicopy satu per satu tanpa menghapus ringkasan spek gabungan.
 
-Field panjang harus dipecah 2-4 bagian pendek.
+## Compliance and Platform Packs
 
-Setiap part idealnya < 700 karakter agar mudah copy di Telegram.
+Compliance does not delete metadata.
 
-## Data Status
+- `SAFE_TO_DRAFT`: platform pack purpose is `MARKETPLACE_DRAFT`.
+- `NEED_REVIEW`: platform pack purpose is `REVIEW_REQUIRED`.
+- `INTERNAL_ONLY` or `BLOCKED`: platform pack purpose is `METADATA_ONLY`.
 
-```text
-DRAFT
-DATA_SEBAGIAN
-READY
-INPUTTED_SHOPEE
-INPUTTED_TIKTOK
-ARCHIVED
-```
-
-Default setelah generation biasanya:
-
-- `DATA_SEBAGIAN` jika ada missing fields.
-- `READY` jika data cukup dan compliance aman.
-- `NEED_REVIEW` jika compliance ambigu.
+`METADATA_ONLY` means the data can be used for internal cataloging and photo-editing metadata, but requires manual review before marketplace publishing.
 
 ## Example Parsed Output
 
 ```json
 {
   "supplier_product_name": "badik baja per kayu jati",
-  "normalized_store_name": "Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 4 mm",
+  "normalized_store_name": "Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 16 cm",
   "generated_series": "WIRA SERIES",
   "supplier_price": 120000,
   "supplier_stock": 12,
@@ -209,10 +143,9 @@ Default setelah generation biasanya:
     "handle_material": {"value": "kayu jati", "source": "explicit", "confidence": 0.95},
     "pb": {"value": "25-26 cm", "source": "explicit", "confidence": 0.85},
     "lb": {"value": "35 mm", "source": "explicit", "confidence": 0.75},
-    "tb": {"value": "4 mm", "source": "explicit", "confidence": 0.75}
+    "tb": {"value": "16 cm", "source": "explicit", "confidence": 0.75}
   },
-  "missing_fields": ["berat produk", "dimensi paket", "isi paket", "supplier"],
   "sensitive_terms": ["sembelih", "badik"],
-  "compliance_status": "NEED_REVIEW"
+  "compliance_status": "INTERNAL_ONLY"
 }
 ```

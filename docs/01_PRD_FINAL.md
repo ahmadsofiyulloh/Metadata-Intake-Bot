@@ -1,146 +1,97 @@
-# PRD Final — Metadata Intake Bot
+# PRD Final - Metadata Intake Bot
 
-## 1. Nama Project
+## Product
 
-**Metadata Intake Bot**
+Metadata Intake Bot is a backend-only Telegram bot that turns messy seller/supplier text into structured product metadata for internal cataloging, photo-editing copy, and marketplace draft preparation.
 
-Bot Telegram backend-only untuk mengubah deskripsi pendek dari seller/supplier menjadi metadata produk siap pakai untuk input produk baru, desain foto produk, dan pencatatan data supplier.
+## Problem
 
-## 2. Latar Belakang
-
-User sering menerima katalog dari supplier lewat chat, misalnya:
+Supplier text is often short, vulgar, incomplete, and inconsistent:
 
 ```text
-Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 4 ml stok 12 pcs 120.000
+Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 16 stok 12 pcs 120.000
 ```
 
-Masalah utama:
+The user needs:
 
-- Format deskripsi supplier tidak rapi.
-- Nama produk belum cocok untuk katalog toko.
-- Banyak singkatan dan data tidak selalu lengkap.
-- Nama produk perlu branding toko.
-- SKU perlu digenerate dengan kode toko pribadi.
-- Data modal dan stok supplier perlu disimpan.
-- Metadata foto produk dan field seller perlu dibuat cepat.
-- Output harus mudah dicopy per field langsung dari chat Telegram.
+- clean store product names
+- generated SKU
+- supplier price and stock stored
+- copyable spec fields
+- neutral photo-editing metadata
+- searchable history
+- clear risk/compliance status
 
-## 3. Tujuan Produk
+## MVP Goal
 
-MVP bertujuan membuat bot yang bisa:
+The MVP must:
 
-1. Menerima teks deskripsi seller.
-2. Menyimpan raw seller text apa adanya.
-3. Mengekstrak data yang jelas dari deskripsi.
-4. Menandai data yang belum ada atau ambigu.
-5. Menormalisasi nama produk menjadi format toko.
-6. Generate title produk sesuai format toko.
-7. Generate SKU internal.
-8. Generate metadata teks untuk desain foto produk.
-9. Generate field Shopee dan TikTok Seller sebagai kandidat copy.
-10. Menyediakan hasil di chat Telegram dengan format copyable per field.
-11. Menyimpan hasil metadata ke database agar bisa dicari ulang.
+1. Accept seller text through Telegram.
+2. Store raw seller text unchanged.
+3. Extract explicit data and mark missing data.
+4. Generate sanitized store metadata.
+5. Use neutral aliases for sensitive supplier terms.
+6. Generate SKU.
+7. Generate image metadata with `spec_copy_fields`.
+8. Generate Shopee/TikTok metadata packs with `purpose`.
+9. Persist everything in Supabase.
+10. Return copyable fields in Telegram.
 
-## 4. Scope MVP
+## Scope
 
-### In Scope
+In scope:
 
-- Backend-only Telegram Bot.
-- Deploy prototype ke Vercel.
-- Local dev memakai polling adapter.
-- Database Supabase.
-- Gemini API untuk generate metadata terstruktur.
-- Input hanya teks deskripsi seller.
-- Search berdasarkan raw nama/deskripsi supplier, nama toko hasil normalisasi, keyword, series, material, dan supplier.
-- Output per field dalam format monospace/inline-code.
-- Field panjang dipecah menjadi beberapa bagian.
-- Compliance dan wording guard.
+- Telegram backend-only bot.
+- Local polling.
+- Vercel webhook path.
+- Supabase persistence.
+- Gemini structured metadata generation.
+- Compliance guard and catalog sanitizer.
+- Supplier photo attachment for audit context.
+- Search by seller text, normalized title, material, keyword, series, and supplier.
 
-### Out of Scope
+Out of scope:
 
-- Frontend dashboard.
-- OCR foto produk.
-- Scan image/PDF.
-- Edit foto produk.
-- Upload otomatis ke Shopee/TikTok.
-- Sync marketplace.
-- Tracking delivery.
-- WhatsApp automation.
-- Pembayaran supplier otomatis.
+- frontend dashboard
+- OCR
+- image editing
+- marketplace sync
+- WhatsApp automation
+- delivery tracking
+- supplier payment automation
 
-## 5. Target User
+## Title Rule
 
-User pribadi/reseller/dropshipper yang menerima katalog supplier lewat WhatsApp/Telegram dan perlu menyiapkan metadata produk secara cepat untuk marketplace.
-
-## 6. Core User Story
-
-### US-01 — Generate Metadata Baru
-
-Sebagai user, saya ingin mengirim deskripsi supplier ke bot, lalu bot membuat title, SKU, spesifikasi, keyword, metadata foto, dan deskripsi marketplace agar saya bisa input produk baru lebih cepat.
-
-### US-02 — Data Tidak Lengkap
-
-Sebagai user, saya ingin bot tidak mengarang data yang tidak ada di deskripsi seller, tetapi menandai data yang missing agar bisa saya lengkapi nanti.
-
-### US-03 — Copy Per Field
-
-Sebagai user, saya ingin tiap field hasil metadata bisa dicopy langsung dari chat Telegram tanpa harus copy satu pack besar.
-
-### US-04 — Cari Produk Lama
-
-Sebagai user, saya ingin mencari produk berdasarkan nama supplier atau nama toko yang sudah dinormalisasi, bukan berdasarkan SKU.
-
-### US-05 — Mode Shopee/TikTok
-
-Sebagai user, saya ingin memanggil field pack khusus Shopee atau TikTok saat mau input produk ke platform tersebut.
-
-## 7. Format Title Produk
-
-Format wajib:
+Format:
 
 ```text
-[NAMA TOKO UPPERCASE] | [NAMA SERIES AI] [NAMA PRODUK SUPPLIER YANG DINORMALISASI] - [KEYWORD PLATFORM MARKETPLACE]
+[STORE NAME UPPERCASE] | [SERIES] [SANITIZED STORE NAME] - [NEUTRAL KEYWORD]
 ```
 
-Contoh:
+Example:
 
 ```text
-LANDEP SMITH | WIRA SERIES Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm - Alat Outdoor Harian
+LANDEP SMITH | WIRA SERIES Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 16 cm - Perkakas Handcraft
 ```
 
-## 8. Search Principle
+Sensitive supplier terms must not appear in generated store titles.
 
-UX search utama:
+## Photo Metadata Rule
 
-- Nama dari supplier.
-- Raw deskripsi supplier.
-- Nama produk yang sudah dinormalisasi.
-- Title internal toko.
-- Keyword/material/series.
-- Supplier.
+Specs used for image editing must include value-only and label+value fields.
 
-SKU tetap dibuat, tetapi **bukan patokan utama search**.
+Example:
 
-## 9. Data Classification Principle
+```text
+16 cm
+Tinggi Bilah 16 cm
+```
 
-AI wajib membedakan data:
+## Success Criteria
 
-| Status | Arti |
-|---|---|
-| `explicit` | Disebut langsung oleh seller |
-| `inferred` | Disimpulkan dari konteks dengan confidence |
-| `unknown` | Tidak tersedia, jangan ditebak |
-| `risk` | Sensitif/berisiko untuk wording platform |
-
-## 10. Success Criteria MVP
-
-MVP dianggap valid jika:
-
-- User bisa `/new`, kirim deskripsi seller, dan menerima metadata copyable.
-- Hasil tersimpan ke Supabase.
-- User bisa `/search kayu jati` dan menemukan produk dari raw text maupun nama normalisasi.
-- User bisa `/shopee <kata>` dan `/tiktok <kata>` untuk field platform.
-- Output copyable menggunakan label + inline code per field.
-- Data missing ditampilkan jelas.
-- Compliance status muncul jelas.
-- Tidak ada fitur out-of-scope yang ikut dibuat.
+- `/new` creates a stored draft.
+- `/search kayu jati` can find the row.
+- `/detail <short_code>` shows sanitized metadata and `Copy Spek Foto`.
+- `/shopee` and `/tiktok` return platform packs.
+- `INTERNAL_ONLY` and `BLOCKED` still return sanitized metadata with `purpose: METADATA_ONLY`.
+- Typecheck, lint, build, and metadata smoke test pass.

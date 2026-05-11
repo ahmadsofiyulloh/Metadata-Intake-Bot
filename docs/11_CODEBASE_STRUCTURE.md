@@ -1,148 +1,82 @@
 # Codebase Structure
 
-## Target Repo
+## Current Repo
 
 ```text
 metadata-intake-bot/
-├─ api/
-│  ├─ telegram/
-│  │  └─ webhook.ts
-│  └─ health.ts
-├─ scripts/
-│  ├─ dev-polling.ts
-│  ├─ set-webhook.ts
-│  ├─ delete-webhook.ts
-│  └─ test-gemini.ts
-├─ src/
-│  ├─ bot/
-│  │  ├─ handleUpdate.ts
-│  │  ├─ commands/
-│  │  │  ├─ start.ts
-│  │  │  ├─ new.ts
-│  │  │  ├─ search.ts
-│  │  │  ├─ detail.ts
-│  │  │  ├─ shopee.ts
-│  │  │  ├─ tiktok.ts
-│  │  │  ├─ review.ts
-│  │  │  ├─ ready.ts
-│  │  │  └─ archive.ts
-│  │  ├─ formatters/
-│  │  │  ├─ telegramHtml.ts
-│  │  │  ├─ metadataMessage.ts
-│  │  │  └─ fieldChunks.ts
-│  │  └─ telegramClient.ts
-│  ├─ metadata/
-│  │  ├─ generateMetadata.ts
-│  │  ├─ metadataSchema.ts
-│  │  ├─ normalizeSellerText.ts
-│  │  ├─ skuGenerator.ts
-│  │  ├─ complianceGuard.ts
-│  │  └─ searchText.ts
-│  ├─ db/
-│  │  ├─ supabase.ts
-│  │  ├─ productDraftsRepo.ts
-│  │  ├─ versionsRepo.ts
-│  │  └─ sessionsRepo.ts
-│  ├─ config/
-│  │  └─ env.ts
-│  └─ types/
-│     └─ metadata.ts
-├─ supabase/
-│  └─ migrations/
-│     └─ 001_initial_schema.sql
-├─ docs/
-│  ├─ PRD.md
-│  ├─ HANDOFF.md
-│  ├─ LOCAL_DEV.md
-│  └─ MVP_SCOPE.md
-├─ package.json
-├─ tsconfig.json
-├─ vercel.json
-├─ .env.example
-└─ README.md
+|-- api/
+|   |-- telegram/webhook.ts
+|   `-- health.ts
+|-- scripts/
+|   |-- dev-polling.ts
+|   |-- set-webhook.ts
+|   |-- delete-webhook.ts
+|   |-- test-gemini.ts
+|   `-- test-metadata-sanitizer.ts
+|-- src/
+|   |-- bot/
+|   |   |-- http.ts
+|   |   |-- handleUpdate.ts
+|   |   |-- commands/
+|   |   `-- formatters/
+|   |-- metadata/
+|   |   |-- generateMetadata.ts
+|   |   |-- metadataSchema.ts
+|   |   |-- normalizeSellerText.ts
+|   |   |-- catalogSanitizer.ts
+|   |   |-- priceEstimator.ts
+|   |   |-- complianceGuard.ts
+|   |   |-- skuGenerator.ts
+|   |   `-- searchText.ts
+|   |-- db/
+|   |-- config/
+|   `-- types/
+|-- supabase/migrations/001_initial_schema.sql
+|-- docs/
+|-- package.json
+|-- tsconfig.json
+|-- vercel.json
+|-- .env.example
+`-- README.md
 ```
 
-## Core Files
+## Important Files
 
-### `api/telegram/webhook.ts`
+### `src/bot/http.ts`
 
-Vercel webhook endpoint.
+Telegram HTTP transport helper.
 
-Responsibilities:
-
-- Accept POST request.
-- Validate secret token if configured.
-- Parse Telegram update.
-- Call `handleUpdate(update)`.
-- Return HTTP 200.
-
-### `scripts/dev-polling.ts`
-
-Local polling runner.
-
-Responsibilities:
-
-- Delete webhook warning or instruct user.
-- Poll `getUpdates`.
-- Pass each update to `handleUpdate`.
-- Store offset.
-- Log errors safely.
-
-### `src/bot/handleUpdate.ts`
-
-Main update router.
-
-Responsibilities:
-
-- Parse message text.
-- Detect command.
-- Detect active session after `/new`.
-- Route to command handlers.
-- Send response via Telegram client.
+Do not rename this file to a Telegram-specific client filename without checking local security tooling. The current name is intentional.
 
 ### `src/metadata/generateMetadata.ts`
 
-Gemini integration.
+Builds the Gemini request, parses JSON, merges AI with heuristic extraction, and returns generated metadata.
 
-Responsibilities:
+### `src/metadata/catalogSanitizer.ts`
 
-- Build system prompt.
-- Build schema.
-- Call Gemini.
-- Validate JSON.
-- Return typed metadata draft.
+Final deterministic cleanup for generated metadata:
+
+- Neutral category aliases.
+- Sensitive title/keyword/description cleanup.
+- Duplicate phrase cleanup.
+- Dimension normalization.
+- `image_metadata.spec_copy_fields`.
 
 ### `src/metadata/complianceGuard.ts`
 
-Final guard after Gemini output.
-
-Responsibilities:
-
-- Detect sensitive/risk terms.
-- Adjust compliance status.
-- Add review notes.
-- Lock platform fields if needed.
-
-### `src/metadata/skuGenerator.ts`
-
-Generate SKU from store code + metadata.
-
-### `src/metadata/searchText.ts`
-
-Build searchable text from raw supplier text + normalized name + title + keywords + specs.
+Refines compliance status and builds platform packs. It does not delete metadata for `INTERNAL_ONLY` or `BLOCKED`; those packs are marked `METADATA_ONLY`.
 
 ### `src/bot/formatters/metadataMessage.ts`
 
-Format Telegram messages:
+Formats Telegram HTML messages and includes `Copy Spek Foto` blocks, estimated selling price output, and raw supplier-text audit chunks.
 
-```text
-Label:
-<code>value</code>
-```
+### `src/db/supplierPhotosRepo.ts`
 
-Use HTML parse mode or MarkdownV2 with proper escaping.
+Persists and loads the supplier photo attachment linked to a draft.
 
-Recommendation: use HTML parse mode because `<code>` is simple to escape.
+### `src/types/intake.ts`
+
+Shared types for the `/new` intake flow and supplier photo attachment payload.
 
 ## Package Scripts
 
@@ -150,35 +84,36 @@ Recommendation: use HTML parse mode because `<code>` is simple to escape.
 {
   "scripts": {
     "dev": "vercel dev",
-    "dev:polling": "tsx scripts/dev-polling.ts",
+    "dev:polling": "tsx --env-file=.env scripts/dev-polling.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "set:webhook": "tsx scripts/set-webhook.ts",
-    "delete:webhook": "tsx scripts/delete-webhook.ts",
-    "test:gemini": "tsx scripts/test-gemini.ts"
+    "set:webhook": "tsx --env-file=.env scripts/set-webhook.ts",
+    "delete:webhook": "tsx --env-file=.env scripts/delete-webhook.ts",
+    "test:gemini": "tsx --env-file=.env scripts/test-gemini.ts",
+    "test:metadata": "tsx --env-file=.env scripts/test-metadata-sanitizer.ts"
   }
 }
 ```
 
-## Dependencies Suggestion
+## Dependencies
+
+Runtime dependencies:
 
 ```text
-@google/genai
 @supabase/supabase-js
 zod
-dotenv
-tsx
-typescript
 ```
 
-Telegram API can be called directly with `fetch` for MVP, or use a lightweight bot library. Direct fetch keeps Vercel/webhook simple.
+Dev dependencies include `tsx`, `typescript`, `eslint`, `supabase`, and `vercel`.
+
+Gemini is called directly with `fetch`; the repo does not currently use `@google/genai` or `dotenv`.
 
 ## Env Validation
 
-Use `zod` to validate env in `src/config/env.ts`.
+Env validation lives in `src/config/env.ts`.
 
-Required:
+Required for runtime:
 
 ```text
 TELEGRAM_BOT_TOKEN
@@ -196,4 +131,6 @@ TELEGRAM_WEBHOOK_SECRET
 GEMINI_MODEL
 DEFAULT_LANGUAGE
 NODE_ENV
+VERCEL_PUBLIC_URL
+VERCEL_URL
 ```

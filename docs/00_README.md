@@ -4,9 +4,9 @@ Dokumen ini adalah paket handoff final untuk membuat **Telegram Product Metadata
 
 ## Ringkasan Project
 
-Project ini adalah bot Telegram backend-only untuk membantu input produk baru dari deskripsi seller/supplier. MVP hanya fokus pada **olah teks deskripsi seller** menjadi metadata produk siap copy.
+Project ini adalah bot Telegram backend-only untuk membantu input produk baru dari deskripsi seller/supplier. MVP fokus pada **olah teks deskripsi seller** menjadi metadata produk siap copy, dengan navigasi utama via reply keyboard dan aksi kontekstual via inline keyboard.
 
-Tidak ada frontend, tidak ada OCR foto, tidak ada edit foto, tidak ada sync marketplace, dan tidak ada tracking delivery pada fase MVP ini.
+Tidak ada frontend, tidak ada OCR foto, tidak ada edit foto, tetapi ada attachment foto supplier untuk audit konteks. Tetap tidak ada sync marketplace dan tidak ada tracking delivery pada fase MVP ini.
 
 ## Isi Paket Dokumen
 

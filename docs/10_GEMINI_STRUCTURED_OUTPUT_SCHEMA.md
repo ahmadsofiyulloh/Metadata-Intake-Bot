@@ -2,159 +2,75 @@
 
 ## Goal
 
-Gemini harus menghasilkan JSON konsisten, bukan teks bebas.
+Gemini returns JSON, not free text. The live request uses the endpoint-compatible `geminiMetadataResponseSchema` in `src/metadata/metadataSchema.ts`.
 
-Gunakan structured output JSON schema untuk metadata generation.
+Do not rely on Gemini as the final authority for title, compliance, or platform-safe wording. The final deterministic pass is in `catalogSanitizer.ts` and `complianceGuard.ts`.
 
-## System Instruction Draft
+## System Instruction Requirements
 
-```text
-You are a product metadata normalizer for an Indonesian reseller workflow.
-Your job is to transform messy supplier text into structured product metadata.
-Do not invent facts that are not present.
-Classify each extracted field as explicit, inferred, unknown, or risk.
-Normalize harsh/aggressive supplier wording into professional, neutral catalog language, but do not hide or misrepresent the product type.
-Do not promote products as weapons, self-defense tools, combat items, tactical weapons, or dangerous items.
-Generate platform candidate fields only when appropriate, and mark ambiguous products as NEED_REVIEW.
-Return only valid JSON matching the schema.
-```
+Gemini must be instructed to:
 
-## User Prompt Template
+- Extract only facts present in seller text.
+- Classify field source as `explicit`, `inferred`, `unknown`, or `risk`.
+- Use neutral category aliases in store names and titles.
+- Avoid copying sensitive supplier terms into public metadata fields.
+- Avoid repeated category/material/dimension phrases.
+- Treat `PB` and `TB` as `cm` by default, and `LB` as `mm` by default.
+- Return `image_metadata.spec_copy_fields`.
 
-```text
-Store name: {{STORE_NAME}}
-Store code: {{STORE_CODE}}
-Language: Indonesian
-
-Supplier description:
-{{RAW_SELLER_TEXT}}
-
-Task:
-1. Extract clear supplier data.
-2. Identify missing fields.
-3. Normalize product name for store catalog.
-4. Generate series name.
-5. Generate title using format:
-   [STORE NAME UPPERCASE] | [SERIES] [NORMALIZED PRODUCT NAME] - [MARKETPLACE KEYWORD]
-6. Generate SKU basis.
-7. Generate Shopee candidate fields.
-8. Generate TikTok candidate fields.
-9. Generate image text metadata for external product photo editing.
-10. Add compliance status and reason.
-```
-
-## JSON Schema Concept
+## Required Image Spec Copy Shape
 
 ```json
 {
-  "type": "object",
-  "required": [
-    "raw_seller_text",
-    "supplier_product_name",
-    "normalized_store_name",
-    "generated_series",
-    "category_context",
-    "supplier_price",
-    "supplier_stock",
-    "specs",
-    "missing_fields",
-    "sensitive_terms",
-    "compliance_status",
-    "compliance_reason",
-    "title_internal",
-    "title_shopee",
-    "title_tiktok",
-    "sku_basis",
-    "keywords_shopee",
-    "keywords_tiktok",
-    "image_metadata",
-    "shopee_description_parts",
-    "tiktok_description_parts",
-    "data_status",
-    "confidence_summary"
-  ],
-  "properties": {
-    "raw_seller_text": {"type": "string"},
-    "supplier_product_name": {"type": "string"},
-    "normalized_store_name": {"type": "string"},
-    "generated_series": {"type": "string"},
-    "category_context": {"type": "string"},
-    "supplier_price": {"type": ["number", "null"]},
-    "supplier_stock": {"type": ["integer", "null"]},
-    "specs": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "value": {"type": ["string", "number", "integer", "null"]},
-          "source": {"type": "string", "enum": ["explicit", "inferred", "unknown", "risk"]},
-          "confidence": {"type": "number"}
-        }
-      }
-    },
-    "missing_fields": {"type": "array", "items": {"type": "string"}},
-    "sensitive_terms": {"type": "array", "items": {"type": "string"}},
-    "compliance_status": {"type": "string", "enum": ["SAFE_TO_DRAFT", "NEED_REVIEW", "INTERNAL_ONLY", "BLOCKED"]},
-    "compliance_reason": {"type": "string"},
-    "title_internal": {"type": "string"},
-    "title_shopee": {"type": "string"},
-    "title_tiktok": {"type": "string"},
-    "sku_basis": {
-      "type": "object",
-      "properties": {
-        "series_code": {"type": "string"},
-        "category_code": {"type": "string"},
-        "material_code": {"type": "string"},
-        "attribute_code": {"type": "string"}
-      }
-    },
-    "keywords_shopee": {"type": "array", "items": {"type": "string"}},
-    "keywords_tiktok": {"type": "array", "items": {"type": "string"}},
-    "image_metadata": {
-      "type": "object",
-      "properties": {
-        "hero_headline": {"type": "string"},
-        "hero_subheadline": {"type": "string"},
-        "badges": {"type": "array", "items": {"type": "string"}},
-        "spec_headline": {"type": "string"},
-        "benefit_points": {"type": "array", "items": {"type": "string"}}
-      }
-    },
-    "shopee_description_parts": {"type": "array", "items": {"type": "string"}},
-    "tiktok_description_parts": {"type": "array", "items": {"type": "string"}},
-    "data_status": {"type": "string", "enum": ["DRAFT", "DATA_SEBAGIAN", "READY"]},
-    "confidence_summary": {"type": "string"}
-  }
+  "key": "tb",
+  "label": "Tinggi Bilah",
+  "value": "16 cm",
+  "copy_value": "16 cm",
+  "copy_label_value": "Tinggi Bilah 16 cm",
+  "context": "ukuran bilah",
+  "source": "explicit",
+  "confidence": 0.75
 }
 ```
 
+## Gemini Response Schema Reality
+
+The full conceptual JSON schema can include `additionalProperties` and union type arrays, but the live Gemini endpoint uses a simpler response schema:
+
+- nullable fields use `nullable: true`.
+- `specs` is constrained to known MVP keys.
+- `image_metadata.spec_copy_fields` is required.
+- Final sanitization runs after parsing.
+
 ## Post-Processing Required
 
-Setelah Gemini output:
+After Gemini output:
 
-1. Jalankan compliance guard.
-2. Generate SKU final dengan sequence DB.
-3. Generate short_code.
-4. Build `searchable_text`.
-5. Split long fields for Telegram rendering.
+1. Parse and validate with Zod.
+2. Merge with heuristic extraction.
+3. Keep explicit heuristic specs over conflicting Gemini specs.
+4. Run compliance guard.
+5. Run catalog sanitizer.
+6. Build SKU final with DB sequence.
+7. Build `searchable_text`.
+8. Split long Telegram messages.
 
 ## Example Input
 
 ```text
-Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 4 ml stok 12 pcs 120.000
+Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 16 stok 12 pcs 120.000
 ```
 
-## Example Output Summary
+## Expected Safe Summary
 
 ```json
 {
   "supplier_product_name": "badik baja per kayu jati",
-  "normalized_store_name": "Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 4 mm",
-  "generated_series": "WIRA SERIES",
+  "normalized_store_name": "Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 16 cm",
+  "title_internal": "LANDEP SMITH | WIRA SERIES Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 16 cm - Perkakas Handcraft",
   "supplier_price": 120000,
   "supplier_stock": 12,
-  "missing_fields": ["berat produk", "dimensi paket", "isi paket", "supplier"],
   "sensitive_terms": ["sembelih", "badik"],
-  "compliance_status": "NEED_REVIEW"
+  "compliance_status": "INTERNAL_ONLY"
 }
 ```

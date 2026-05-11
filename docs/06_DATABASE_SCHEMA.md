@@ -1,166 +1,111 @@
-# Database Schema — Supabase MVP
+# Database Schema - Supabase MVP
 
 ## Migration File
-
-Path target:
 
 ```text
 supabase/migrations/001_initial_schema.sql
 ```
 
-## SQL Schema
+## Current Notes
 
-```sql
-create extension if not exists "pgcrypto";
+- The migration is the source of truth for exact SQL.
+- Bot tables live in `public`: `product_drafts`, `metadata_versions`, `product_draft_supplier_photos`, `bot_events`, and `user_sessions`.
+- `product_drafts.image_metadata_json`, `shopee_field_pack_json`, and `tiktok_field_pack_json` are JSONB and can store new metadata shapes without a migration.
+- `image_metadata_json.spec_copy_fields` is used for photo-editing copy values.
+- `product_draft_supplier_photos` stores the Telegram `file_id` and `file_unique_id` for the supplier photo tied to a draft.
+- `short_code` and SKU sequence helpers are created by the migration.
+- RLS is enabled and service-role access is used by the backend.
 
-create table if not exists product_drafts (
-  id uuid primary key default gen_random_uuid(),
-  short_code text unique not null,
-  sku_internal text unique,
-  store_name text not null,
-  store_code text not null,
+## `product_drafts`
 
-  raw_seller_text text not null,
-  supplier_name text,
-  supplier_product_name text,
-  normalized_store_name text,
-  generated_series text,
-  title_internal text,
-  title_shopee text,
-  title_tiktok text,
+Main source of truth for generated product metadata.
 
-  supplier_price numeric,
-  supplier_stock integer,
+Important fields:
 
-  specs_json jsonb default '{}'::jsonb,
-  missing_fields_json jsonb default '[]'::jsonb,
-  sensitive_terms_json jsonb default '[]'::jsonb,
-  keywords_json jsonb default '{}'::jsonb,
+- `raw_seller_text` - unchanged seller text for audit.
+- `supplier_product_name` - supplier-facing name extracted from raw text.
+- `normalized_store_name` - sanitized store name with neutral alias.
+- `title_internal`, `title_shopee`, `title_tiktok` - sanitized titles.
+- `category_context`, `product_type` - normalized category metadata.
+- `specs_json` - extracted specs with source/confidence.
+- `image_metadata_json` - photo-editing copy metadata, including `spec_copy_fields`.
+- `shopee_field_pack_json`, `tiktok_field_pack_json` - platform metadata packs with `purpose`.
+- `keywords_json` - sanitized platform keyword arrays.
+- `missing_fields_json`, `sensitive_terms_json` - audit and review support.
+- `searchable_text` - combined search text for full-text search.
+- `data_status` - `DRAFT`, `DATA_SEBAGIAN`, `READY`, `INPUTTED_SHOPEE`, `INPUTTED_TIKTOK`, `ARCHIVED`.
+- `compliance_status` - `SAFE_TO_DRAFT`, `NEED_REVIEW`, `INTERNAL_ONLY`, `BLOCKED`.
 
-  image_metadata_json jsonb default '{}'::jsonb,
-  shopee_field_pack_json jsonb default '{}'::jsonb,
-  tiktok_field_pack_json jsonb default '{}'::jsonb,
+## `product_draft_supplier_photos`
 
-  data_status text not null default 'DRAFT',
-  compliance_status text not null default 'NEED_REVIEW',
-  review_notes text,
+One primary supplier photo per draft for audit context.
 
-  searchable_text text,
-  archived_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+Important fields:
 
-create index if not exists idx_product_drafts_searchable_text
-on product_drafts using gin (to_tsvector('simple', coalesce(searchable_text, '')));
+- `product_draft_id` - foreign key to `product_drafts`.
+- `telegram_file_id` - Telegram server-side photo reference used to replay the photo in `/detail`.
+- `telegram_file_unique_id` - stable Telegram unique id for audit trace.
+- `telegram_caption` - original caption if the photo was sent together with text.
+- `telegram_message_id` - original supplier message id.
 
-create index if not exists idx_product_drafts_raw_seller_text
-on product_drafts using gin (to_tsvector('simple', coalesce(raw_seller_text, '')));
+## JSONB Shapes
 
-create index if not exists idx_product_drafts_normalized_store_name
-on product_drafts using gin (to_tsvector('simple', coalesce(normalized_store_name, '')));
+`image_metadata_json.spec_copy_fields` example:
 
-create index if not exists idx_product_drafts_status
-on product_drafts (data_status, compliance_status, archived_at);
-
-create table if not exists metadata_versions (
-  id uuid primary key default gen_random_uuid(),
-  product_draft_id uuid not null references product_drafts(id) on delete cascade,
-  version_number integer not null,
-  reason text,
-  payload_json jsonb not null,
-  created_at timestamptz not null default now(),
-  unique(product_draft_id, version_number)
-);
-
-create table if not exists bot_events (
-  id uuid primary key default gen_random_uuid(),
-  telegram_user_id text,
-  telegram_chat_id text,
-  event_type text not null,
-  payload_json jsonb default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists user_sessions (
-  id uuid primary key default gen_random_uuid(),
-  telegram_user_id text not null,
-  telegram_chat_id text not null,
-  mode text not null,
-  payload_json jsonb default '{}'::jsonb,
-  expires_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique(telegram_user_id, telegram_chat_id)
-);
+```json
+[
+  {
+    "key": "tb",
+    "label": "Tinggi Bilah",
+    "value": "16 cm",
+    "copy_value": "16 cm",
+    "copy_label_value": "Tinggi Bilah 16 cm",
+    "context": "ukuran bilah",
+    "source": "explicit",
+    "confidence": 0.75
+  }
+]
 ```
 
-## Table Notes
+Platform pack example:
 
-### `product_drafts`
-
-Main source of truth untuk metadata produk.
-
-Key fields:
-
-- `raw_seller_text`: teks asli dari seller.
-- `supplier_product_name`: nama produk versi supplier yang dibaca AI.
-- `normalized_store_name`: nama produk versi toko.
-- `title_internal`: title utama toko.
-- `title_shopee`: candidate title Shopee.
-- `title_tiktok`: candidate title TikTok.
-- `searchable_text`: gabungan text untuk search.
-- `data_status`: DRAFT, DATA_SEBAGIAN, READY, INPUTTED, ARCHIVED.
-- `compliance_status`: SAFE_TO_DRAFT, NEED_REVIEW, INTERNAL_ONLY, BLOCKED.
-
-### `metadata_versions`
-
-Simpan versi hasil generation agar revisi tidak menghilangkan jejak.
-
-### `bot_events`
-
-Log event bot untuk debug.
-
-### `user_sessions`
-
-State sederhana untuk flow `/new`.
+```json
+{
+  "status": "INTERNAL_ONLY",
+  "purpose": "METADATA_ONLY",
+  "warning": "Metadata only. Review manual sebelum publish marketplace.",
+  "keywords": ["perkakas handcraft"],
+  "description_parts": ["Perkakas Handcraft dengan data supplier yang sudah dinormalisasi."],
+  "title": "LANDEP SMITH | WIRA SERIES Perkakas Handcraft Baja Per Kayu Jati PB 25-26 cm TB 16 cm - Perkakas Handcraft",
+  "spec_copy_fields": []
+}
+```
 
 ## Search Strategy
 
-Search tidak berbasis SKU. Query harus memeriksa:
+Current implementation searches `searchable_text` with PostgREST full-text search.
 
-- `raw_seller_text`
-- `supplier_product_name`
-- `normalized_store_name`
-- `title_internal`
-- `searchable_text`
+`searchable_text` is built from:
 
-Implementasi awal bisa memakai `ilike` sederhana untuk MVP, lalu ditingkatkan ke full-text search.
+- raw seller text
+- supplier name
+- supplier product name
+- normalized store name
+- series
+- category/product type
+- titles
+- keywords
+- sensitive terms
+- spec values
 
-## Short Code Strategy
+Next planned improvement: fallback search when full-text search returns zero results.
 
-Gunakan `short_code` seperti:
+## Supabase Target Safety
 
-```text
-P-1001
-P-1002
-P-1003
+Before applying future migrations, verify:
+
+```bash
+npx supabase projects list
 ```
 
-Short code dipakai untuk detail dan callback, bukan sebagai search utama.
-
-## SKU Strategy
-
-SKU tetap disimpan untuk field seller dan internal identity.
-
-Format:
-
-```text
-[STORE_CODE]-[SERIES_CODE]-[CATEGORY_CODE]-[MATERIAL_CODE]-[ATTRIBUTE_CODE]-[SEQ]
-```
-
-Contoh:
-
-```text
-LDS-WRA-BP-JTI-PB25-TB4-001
-```
+Then compare the linked project with `SUPABASE_URL` in `.env`. Do not rely on MCP project selection unless it has been verified.

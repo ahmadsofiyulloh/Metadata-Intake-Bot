@@ -1,107 +1,115 @@
 # Execution Checklist
 
-## Phase 0 — Repo Bootstrap
+## Phase 0 - Repo Bootstrap
 
-- [ ] Create Node.js + TypeScript project.
-- [ ] Add package scripts.
-- [ ] Add `.env.example`.
-- [ ] Add Vercel API route.
-- [ ] Add local polling script.
-- [ ] Add docs in `docs/`.
+- [x] Create Node.js + TypeScript project.
+- [x] Add package scripts.
+- [x] Add `.env.example`.
+- [x] Add Vercel API route.
+- [x] Add local polling script.
+- [x] Add docs in `docs/`.
 
-## Phase 1 — Supabase
+## Phase 1 - Supabase
 
-- [ ] Create Supabase project.
-- [ ] Run migration SQL.
-- [ ] Add `SUPABASE_URL` to env.
-- [ ] Add `SUPABASE_SERVICE_ROLE_KEY` to env.
-- [ ] Test insert into `bot_events`.
+- [x] Create Supabase project.
+- [x] Add `SUPABASE_URL` to env.
+- [x] Add `SUPABASE_SERVICE_ROLE_KEY` to env.
+- [x] Apply initial migration to the intended project.
+- [x] Verify bot tables and `next_sku_sequence` RPC on the intended project.
+- [x] Run Supabase advisors with no current issues.
 
-## Phase 2 — Telegram Basics
+Note: verify `.env` project ref before any future migration. Do not assume Supabase MCP points to the same project.
 
-- [ ] Create dev bot via BotFather.
-- [ ] Add `TELEGRAM_BOT_TOKEN` local.
-- [ ] Implement Telegram sendMessage.
-- [ ] Implement `/start`.
-- [ ] Run `npm run dev:polling`.
-- [ ] Confirm bot replies to `/start`.
+## Phase 2 - Telegram Basics
 
-## Phase 3 — Metadata Generation
+- [x] Add `TELEGRAM_BOT_TOKEN` local.
+- [x] Implement Telegram sendMessage through `src/bot/http.ts`.
+- [x] Implement `/start`.
+- [x] Implement local polling runner.
+- [x] Start polling after deleting webhook.
+- [ ] Confirm full manual Telegram command run after latest sanitizer changes, including supplier photo attachment.
 
-- [ ] Add Gemini API key.
-- [ ] Implement structured output schema.
-- [ ] Implement `test:gemini`.
-- [ ] Test sample seller description.
-- [ ] Validate output JSON.
-- [ ] Add compliance guard.
-- [ ] Add SKU generator.
+## Phase 3 - Metadata Generation
 
-## Phase 4 — `/new` Flow
+- [x] Add Gemini API key support.
+- [x] Implement structured output schema.
+- [x] Implement `test:gemini`.
+- [x] Add compliance guard.
+- [x] Add catalog sanitizer.
+- [x] Add SKU generator.
+- [x] Add deterministic `test:metadata`.
+- [x] Add `image_metadata.spec_copy_fields`.
 
-- [ ] `/new` sets user session.
-- [ ] Next text is processed as raw seller text.
-- [ ] Metadata saved to `product_drafts`.
-- [ ] Metadata version v1 saved.
-- [ ] Bot returns copyable per-field output.
+## Phase 4 - `/new` Flow
 
-## Phase 5 — Search and Detail
+- [x] `/new` sets user session.
+- [x] Next text is processed as raw seller text.
+- [x] Metadata saved to `product_drafts`.
+- [x] Metadata version v1 saved.
+- [x] Bot returns copyable per-field output.
+- [x] Bot returns `Copy Spek Foto` values.
 
-- [ ] Build `searchable_text`.
-- [ ] `/search <kata>` returns result list.
-- [ ] `/detail <short_code>` returns detail.
-- [ ] Search works with raw supplier terms.
-- [ ] Search works with normalized store name.
+## Phase 5 - Search and Detail
 
-## Phase 6 — Platform Field Packs
+- [x] Build `searchable_text`.
+- [x] `/search <kata>` returns result list.
+- [x] `/detail <short_code>` returns detail.
+- [x] Search includes raw supplier terms, normalized store name, title, keywords, and specs.
+- [ ] Add fallback search if full-text search returns zero results.
 
-- [ ] `/shopee <kata>` search + show field pack.
-- [ ] `/tiktok <kata>` search + show field pack.
-- [ ] Field long text split into parts.
-- [ ] Risk/warning shown clearly.
+## Phase 6 - Platform Field Packs
 
-## Phase 7 — Vercel Deploy
+- [x] `/shopee <kata>` search + show field pack.
+- [x] `/tiktok <kata>` search + show field pack.
+- [x] Field long text split into parts.
+- [x] Risk/warning shown clearly.
+- [x] `INTERNAL_ONLY` and `BLOCKED` produce metadata with `purpose: METADATA_ONLY`.
 
-- [ ] Push repo to GitHub.
-- [ ] Import to Vercel.
-- [ ] Set env vars.
-- [ ] Deploy.
-- [ ] Test `/api/health`.
-- [ ] Run `npm run set:webhook` with Vercel URL.
+## Phase 7 - Vercel Deploy
+
+- [ ] Confirm Vercel deployment is active.
+- [ ] Set Vercel env vars.
+- [ ] Test `/api/health` returns `200`.
+- [ ] Run `npm run set:webhook` with production `VERCEL_PUBLIC_URL`.
 - [ ] Test Telegram production bot.
 
-## Phase 8 — Validation
+Current blocker: do not set production webhook while `/api/health` returns `404`.
+
+## Phase 8 - Validation
 
 Use input:
 
 ```text
-Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 4 ml stok 12 pcs 120.000
+Sembelih badik baja per kayu jati pb 25-26 lb 35 tb 16 stok 12 pcs 120.000
 ```
 
 Expected:
 
-- [ ] Bot parses modal `120000`.
-- [ ] Bot parses stock `12`.
-- [ ] Bot extracts material `baja per`.
-- [ ] Bot extracts handle `kayu jati`.
-- [ ] Bot extracts PB/LB/TB.
-- [ ] Bot creates normalized name.
-- [ ] Bot creates SKU.
-- [ ] Bot sets compliance to `NEED_REVIEW` or stricter.
-- [ ] Bot lists missing fields.
-- [ ] Bot saves row in Supabase.
-- [ ] `/search kayu jati` finds it.
-- [ ] `/shopee kayu jati` shows field pack.
+- [x] Deterministic smoke parses modal `120000`.
+- [x] Deterministic smoke parses stock `12`.
+- [x] Deterministic smoke extracts material `baja per`.
+- [x] Deterministic smoke extracts handle `kayu jati`.
+- [x] Deterministic smoke extracts PB/LB/TB with PB/TB `cm` and LB `mm`.
+- [x] Store title uses neutral alias and excludes sensitive supplier terms.
+- [x] `Copy Spek Foto` includes value-only and label+value fields.
+- [x] Compliance is `INTERNAL_ONLY` or stricter for risky wording.
+- [ ] Manual Telegram `/new` saves row in Supabase after latest sanitizer changes.
+- [ ] Manual Telegram `/new` with missing fields asks for `lanjut` or `skip`, then saves manual values into the same draft.
+- [ ] Manual Telegram `/new` with supplier photo and caption saves the photo attachment row.
+- [ ] Manual Telegram `/detail` shows the attached supplier photo.
+- [ ] Manual Telegram `/search kayu jati` finds it.
+- [ ] Manual Telegram `/shopee kayu jati` shows metadata pack.
 
 ## Final Report Required from Codex
 
-Codex must report:
+Codex should report:
 
 1. Files created/changed.
 2. Commands run.
-3. Typecheck/lint results.
-4. Local dev instructions.
-5. Vercel deploy instructions.
-6. Env variables needed.
-7. SQL migration path.
+3. Typecheck/lint/build results.
+4. Metadata sanitizer smoke result.
+5. Local dev instructions.
+6. Webhook/Vercel blocker status.
+7. Env variables needed.
 8. Known limitations.
 9. Next recommended task.

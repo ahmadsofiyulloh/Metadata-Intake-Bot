@@ -2,54 +2,38 @@
 
 ## Purpose
 
-Compliance guard bukan untuk mengakali platform. Tujuannya:
+Compliance guard is a metadata safety layer, not a platform bypass.
 
-- Mengubah bahasa supplier yang kasar/berisiko menjadi bahasa katalog yang profesional dan netral.
-- Menjaga deskripsi tetap jujur sesuai fungsi produk.
-- Menandai produk yang butuh review sebelum input marketplace.
-- Mencegah bot membuat copy promosi yang mengarah ke senjata, self-defense, combat, atau klaim berbahaya.
+It must:
 
-## Product Context Levels
+- Keep raw seller text unchanged for audit.
+- Convert risky supplier wording into neutral catalog metadata.
+- Prevent raw sensitive terms from entering store names, titles, keywords, descriptions, and image text.
+- Mark risk clearly before marketplace publishing.
+- Still produce internal metadata for `INTERNAL_ONLY` and `BLOCKED`.
+
+## Compliance Status
 
 ```text
-TOOL_ALLOWED
+SAFE_TO_DRAFT
 NEED_REVIEW
 INTERNAL_ONLY
 BLOCKED
 ```
 
-### TOOL_ALLOWED
+## Platform Pack Purpose
 
-Produk tajam atau perkakas dengan fungsi umum yang jelas, seperti:
+```text
+MARKETPLACE_DRAFT -> safe enough as draft metadata
+REVIEW_REQUIRED   -> metadata exists but must be reviewed before publish
+METADATA_ONLY     -> internal/photo-editing metadata only
+```
 
-- pisau dapur
-- alat masak
-- gunting
-- cutter umum
-- alat kebun
-- alat kerajinan
-- perkakas outdoor non-senjata
+`INTERNAL_ONLY` and `BLOCKED` must not be emptied automatically. They should return sanitized metadata with `purpose: METADATA_ONLY`.
 
-### NEED_REVIEW
+## Sensitive Terms
 
-Produk yang fungsi praktisnya ada tetapi wording/kategorinya ambigu:
-
-- badik handcraft
-- pisau outdoor
-- parang/golok kebun
-- alat tempa tradisional
-- survival tool
-- koleksi tradisional
-
-### INTERNAL_ONLY
-
-Produk yang terlalu berisiko untuk langsung dibuatkan field marketplace, tetapi tetap boleh disimpan sebagai katalog internal.
-
-### BLOCKED
-
-Produk atau wording yang jelas mengarah ke bahaya/senjata/self-defense/combat.
-
-## Sensitive Terms Initial List
+Initial sensitive terms:
 
 ```text
 senjata
@@ -65,6 +49,7 @@ badik
 belati
 golok
 parang
+pisau
 pisau survival
 survival weapon
 sembelih
@@ -72,82 +57,51 @@ tebas
 buru
 ```
 
-Catatan: kata seperti `badik`, `golok`, atau `pisau` tidak otomatis berarti blocked. Context classifier harus melihat fungsi, kategori, dan wording.
+Terms like `badik`, `golok`, `parang`, and `pisau` are not automatically deleted from raw supplier data, but they must be aliased in title/store metadata.
 
-## Neutral Wording Examples
+## Alias Strategy
 
-Kata supplier:
+Use category-neutral aliases:
+
+```text
+badik/belati/terms tradisional -> Perkakas Handcraft
+parang/golok/outdoor context   -> Alat Outdoor
+kebun context                  -> Alat Kebun
+dapur/masak context            -> Alat Dapur
+```
+
+Remove action/aggressive terms:
 
 ```text
 sembelih
 tebas
 senjata tajam
+self defense
 tactical
 combat
 anti begal
-```
-
-Diganti/hapus menjadi wording netral jika fungsi produk memang alat/perkakas:
-
-```text
-alat outdoor
-perkakas
-alat kebun
-alat potong
-handcraft
-tempa tradisional
-gagang kayu
-baja pilihan
-finishing rapi
-untuk aktivitas luar ruang
-untuk kebutuhan harian
-```
-
-## Do Not Do This
-
-Jangan membuat copy seperti:
-
-```text
-Senjata tajam kuat untuk self defense
-Pisau tactical combat anti begal
-Tebas kuat mematikan
-```
-
-Jangan juga menyamarkan produk dilarang sebagai kategori palsu.
-
-## Shopee/TikTok Output Differences
-
-MVP harus menyimpan status per platform:
-
-```json
-{
-  "shopee": "NEED_REVIEW",
-  "tiktok": "INTERNAL_ONLY"
-}
-```
-
-Jika produk mengandung alat tajam/ambigu, TikTok field pack boleh dikunci atau diberi warning lebih ketat.
-
-## Example Output for Ambiguous Outdoor Tool
-
-```text
-Compliance:
-`NEED_REVIEW`
-
-Reason:
-`Produk termasuk alat tajam/perkakas outdoor. Gunakan wording netral sesuai fungsi produk dan review kategori marketplace sebelum input.`
+mematikan
 ```
 
 ## Implementation Rule
 
-`complianceGuard.ts` harus menerima output Gemini lalu melakukan final pass:
+Final pass order:
 
-1. Normalisasi sensitive terms.
-2. Set `compliance_status` final.
-3. Tambahkan `review_notes`.
-4. Lock/empty platform fields jika terlalu berisiko.
-5. Jangan hilangkan raw seller text.
+1. Merge heuristic and Gemini output.
+2. Preserve explicit heuristic specs when Gemini returns weaker or risky values.
+3. Refine compliance status from raw seller text.
+4. Sanitize generated metadata through `catalogSanitizer.ts`.
+5. Build platform packs with `purpose`, `warning`, sanitized keywords, sanitized descriptions, title, and `spec_copy_fields`.
+6. Store raw seller text unchanged.
 
-## Audit Log
+## Do Not Do This
 
-Jika compliance guard mengubah status, simpan di `metadata_versions` atau `bot_events`.
+Do not output public metadata like:
+
+```text
+Senjata tajam untuk self defense
+Pisau tactical combat anti begal
+Sembelih kuat dan mematikan
+```
+
+Do not hide raw seller text from storage. The sanitized layer is for generated metadata only.
